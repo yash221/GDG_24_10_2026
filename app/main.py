@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import tools
+from . import geo, rewards, tools
 from .config import BASE_DIR, settings
 from .images import BadImage, process_upload
 from .store import STATUSES, make_store
@@ -62,6 +62,10 @@ def client_ip(request: Request) -> str:
 class ChatIn(BaseModel):
     session_id: str = Field(min_length=20, max_length=64)
     message: str = Field(min_length=1, max_length=500)
+
+
+class SessionIn(BaseModel):
+    session_id: str = Field(min_length=20, max_length=64)
 
 
 class StatusIn(BaseModel):
@@ -137,7 +141,7 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
             t = store.get_ticket(filed[-1]["result"]["ticket_id"])
             if t:
                 ticket = {**tools.public_view(t), "social": tools.social_post(t)}
-        return {**result, "ticket": ticket}
+        return {**result, "ticket": ticket, "rewards": rewards.summary(store, session_id)}
 
     @app.get("/health")
     def health():
@@ -168,6 +172,9 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
         # device location instead; the photo's own GPS wins when both exist
         if image["lat"] is None and lat is not None and lng is not None:
             image["lat"], image["lng"] = round(lat, 6), round(lng, 6)
+        elif image["lat"] is not None and lat is not None and lng is not None:
+            # photo GPS far from where the phone is now: weak sign of a forwarded photo
+            image["meta"]["location_mismatch"] = geo.haversine_km(image["lat"], image["lng"], lat, lng) > 2
         store.save_image({**image, "session_id": session_id})
         store.set_pending_image(session_id, image["id"])
 
@@ -212,7 +219,20 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
         t = store.update_status(ticket_id, body.status, body.note.strip())
         if not t:
             raise HTTPException(404, "Complaint not found")
+        if body.status == "Resolved":
+            # fixed by AMC is the strongest proof the report was real
+            rewards.award(store, t["session_id"], t, "resolved")
         return tools.public_view(t)
+
+    @app.post("/api/rewards")
+    def my_rewards(body: SessionIn):
+        require_session(body.session_id)
+        return rewards.summary(store, body.session_id)
+
+    @app.get("/api/leaderboard")
+    def leaderboard(request: Request):
+        limit(f"lookup:{client_ip(request)}", settings.lookups_per_hour_per_ip)
+        return {"leaders": rewards.leaderboard(store)}
 
     app.mount("/", StaticFiles(directory=BASE_DIR / "static", html=True), name="static")
     return app

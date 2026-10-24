@@ -51,11 +51,25 @@
         <dt>Department</dt><dd id="t-dept"></dd>
         <dt>Status</dt><dd><span id="t-status" class="pill"></span></dd>
         <dt>Expected by</dt><dd id="t-expected"></dd>
+        <dt>Photo trust</dt><dd><span id="t-trust" class="pill"></span></dd>
       </dl>
+      <details id="trust-details" class="steps">
+        <summary>Why this trust score?</summary>
+        <ul id="trust-reasons"></ul>
+      </details>
       <div class="share">
         <a id="share-x" class="button ghost" target="_blank" rel="noopener noreferrer">Post on X<span class="visually-hidden"> (opens in a new tab)</span></a>
         <button type="button" id="copy-post" class="ghost">Copy post for Instagram</button>
       </div>
+    </section>
+
+    <section class="card rewards" aria-labelledby="rewards-title">
+      <h2 id="rewards-title" class="section-title">Your civic points</h2>
+      <p class="points"><span id="r-total">0</span> points</p>
+      <p id="r-last" class="hint" role="status">Report a real issue to earn points. You get more when AMC fixes it.</p>
+      <ul id="r-badges" class="badges" aria-label="Your badges"></ul>
+      <h3 class="subtitle">Top reporters</h3>
+      <ol id="leaders" class="leaders"></ol>
     </section>
 
     <section class="card chat" aria-labelledby="chat-title">
@@ -64,6 +78,7 @@
       <div class="chips">
         <button type="button" class="chip" data-msg="What's the status?">What's the status?</button>
         <button type="button" class="chip" data-msg="Draft a social media post for my complaint">Draft a post</button>
+        <button type="button" class="chip" data-msg="How many points do I have?">My points</button>
       </div>
       <form id="chat-form" class="row">
         <label for="message" class="visually-hidden">Message</label>

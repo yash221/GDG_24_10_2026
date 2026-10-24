@@ -138,6 +138,16 @@ details.steps ol { margin: 6px 0 0; padding-left: 20px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .chip { background: transparent; color: var(--text); border: 1px solid var(--muted); padding: 8px 14px; border-radius: 99px; font-weight: 500; font-size: .95rem; }
 
+.pill.warn { background: transparent; color: var(--warn); border: 1px solid var(--warn); }
+#trust-reasons { margin: 6px 0 0; padding-left: 20px; }
+.points { margin: 0; font-size: 2rem; font-weight: 700; color: var(--accent); }
+.subtitle { margin: 16px 0 6px; font-size: .95rem; }
+.badges { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 10px 0 0; }
+.badges li { background: var(--soft); color: var(--accent); border-radius: 99px; padding: 4px 12px; font-size: .9rem; font-weight: 600; }
+.leaders { margin: 0; padding-left: 22px; }
+.leaders li { padding: 2px 0; }
+.leaders .you { font-weight: 700; }
+
 .footnote { text-align: center; color: var(--muted); font-size: .8rem; padding-bottom: 24px; }
 
 @media (prefers-reduced-motion: reduce) {

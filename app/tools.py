@@ -4,7 +4,7 @@ The model only chooses which tool to call and with what arguments. Anything
 that ends up in a ticket (category, department, ward, location) is checked
 here against data the server produced itself, so a confused or manipulated
 model can't file a made-up complaint. There is deliberately no tool that
-changes a ticket's status.
+changes a ticket's status or hands out reward points.
 """
 import json
 import logging
@@ -17,8 +17,9 @@ from pathlib import Path
 
 from google.adk.tools import ToolContext
 
-from . import geo
+from . import geo, rewards, trust
 from .config import DATA_DIR, settings
+from .images import hash_distance
 from .store import Store, expected_by, now
 
 log = logging.getLogger(__name__)
@@ -28,6 +29,8 @@ TICKET_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 TICKET_RE = re.compile(r"^AMC-[A-HJ-NP-Z2-9]{6}$")
 IMAGE_RE = re.compile(r"^[0-9a-f]{24}$")
 AMC_HANDLE = "@AmdavadAMC"
+REUSE_WINDOW_DAYS = 30
+REUSE_MAX_DISTANCE = 5  # bits out of 64; re-saved or slightly cropped copies stay under this
 
 
 @dataclass
@@ -201,6 +204,8 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
         return {"error": "Look up the ward first with find_ward_by_coordinates or find_ward_by_area"}
 
     area_name = str(area_name or "")[:100]
+    checked = trust.score(image.get("meta"), analysis, _photo_reused(image), now())
+    trusted = checked["level"] == "trusted"
     since = now() - timedelta(hours=settings.duplicate_window_hours)
     for t in store.recent_tickets(category, since):
         near = (
@@ -217,12 +222,21 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
             store.set_last_ticket(tool_context.user_id, t["id"])
             store.set_pending_image(tool_context.user_id, None)
             tool_context.state["last_ticket_id"] = t["id"]
+            reward = {"points": 0, "reason": "Photo needs verification"}
+            if t["session_id"] == tool_context.user_id:
+                reward = {"points": 0, "reason": "You already reported this issue"}
+            elif trusted:
+                reward = rewards.award(store, tool_context.user_id, t, "confirm")
             return {
                 "duplicate": True,
                 "ticket_id": t["id"],
                 "status": t["status"],
                 "report_count": t.get("report_count", 1) + 1,
                 "message": "This issue was already reported here. Your report was added to it.",
+                "trust_score": checked["score"],
+                "trust_level": checked["level"],
+                "points_awarded": reward["points"],
+                "points_reason": reward["reason"],
             }
 
     dept = DEPARTMENTS[category]
@@ -244,11 +258,16 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
         "report_count": 1,
         "expected_by": expected_by(dept["sla_days"]),
         "created_at": now().isoformat(),
+        "trust_score": checked["score"],
+        "trust_level": checked["level"],
+        "trust_reasons": checked["reasons"],
     }
     store.create_ticket(ticket)
     store.set_last_ticket(tool_context.user_id, ticket["id"])
     store.set_pending_image(tool_context.user_id, None)
     tool_context.state["last_ticket_id"] = ticket["id"]
+    reward = (rewards.award(store, tool_context.user_id, ticket, "first_report") if trusted
+              else {"points": 0, "reason": "Photo needs verification"})
     return {
         "duplicate": False,
         "ticket_id": ticket["id"],
@@ -256,13 +275,29 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
         "department": ticket["department"],
         "status": "Filed",
         "expected_by": ticket["expected_by"],
+        "trust_score": checked["score"],
+        "trust_level": checked["level"],
+        "points_awarded": reward["points"],
+        "points_reason": reward["reason"],
     }
+
+
+def _photo_reused(image: dict) -> bool:
+    phash = (image.get("meta") or {}).get("phash")
+    # near-blank images all hash alike, so they can't be compared meaningfully
+    if not phash or not 8 <= bin(int(phash, 16)).count("1") <= 56:
+        return False
+    since = now() - timedelta(days=REUSE_WINDOW_DAYS)
+    return any(other["id"] != image["id"] and other.get("phash")
+               and hash_distance(phash, other["phash"]) <= REUSE_MAX_DISTANCE
+               for other in svc().store.recent_image_hashes(since))
 
 
 def public_view(ticket: dict) -> dict:
     """Fields that are safe to show anyone holding the tracking ID."""
     keys = ["id", "category", "severity", "description", "ward", "zone", "department",
-            "status", "history", "report_count", "expected_by", "created_at"]
+            "status", "history", "report_count", "expected_by", "created_at",
+            "trust_score", "trust_level", "trust_reasons"]
     return {k: ticket.get(k) for k in keys}
 
 
@@ -324,6 +359,11 @@ def social_post(ticket: dict) -> dict:
     }
 
 
+def get_my_rewards(tool_context: ToolContext) -> dict:
+    """Returns the user's reward points, badges and recent awards."""
+    return rewards.summary(svc().store, tool_context.user_id)
+
+
 AGENT_TOOLS = [
     analyze_photo,
     get_photo_location,
@@ -333,4 +373,5 @@ AGENT_TOOLS = [
     file_complaint,
     get_complaint_status,
     draft_social_post,
+    get_my_rewards,
 ]

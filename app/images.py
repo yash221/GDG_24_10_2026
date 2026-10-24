@@ -1,12 +1,20 @@
 import io
 import secrets
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 ALLOWED_FORMATS = {"JPEG", "MPO", "PNG", "WEBP"}
 GPS_IFD = 0x8825
+EXIF_IFD = 0x8769
+MAKE, MODEL, SOFTWARE, DATETIME, DATETIME_ORIGINAL = 0x010F, 0x0110, 0x0131, 0x0132, 0x9003
+
+# names AI image tools leave in the Software tag or PNG text chunks
+AI_TOOL_MARKERS = ("midjourney", "dall-e", "dall·e", "stable diffusion", "firefly", "imagen",
+                   "gemini", "ideogram", "leonardo", "flux", "sdxl", "comfyui", "novelai")
+AI_PNG_KEYS = ("parameters", "prompt", "workflow")
 
 # a 1280px photo is ~1.6 MP; anything near this limit is a decompression bomb
 Image.MAX_IMAGE_PIXELS = 50_000_000
@@ -36,6 +44,40 @@ def read_gps(img: Image.Image) -> tuple[float, float] | None:
     return round(lat, 6), round(lng, 6)
 
 
+def read_meta(img: Image.Image) -> dict:
+    """Camera and provenance hints, read before EXIF is stripped."""
+    try:
+        exif = img.getexif()
+        sub = exif.get_ifd(EXIF_IFD)
+    except Exception:
+        exif, sub = {}, {}
+    software = str(exif.get(SOFTWARE) or "").lower()
+    taken = sub.get(DATETIME_ORIGINAL) or exif.get(DATETIME)
+    taken_at = None
+    if taken:
+        try:
+            taken_at = datetime.strptime(str(taken).strip("\x00 "), "%Y:%m:%d %H:%M:%S").isoformat()
+        except ValueError:
+            pass
+    ai = any(m in software for m in AI_TOOL_MARKERS) or any(k in img.info for k in AI_PNG_KEYS)
+    return {"camera": bool(exif.get(MAKE) or exif.get(MODEL)), "taken_at": taken_at, "ai_metadata": ai}
+
+
+def image_hash(img: Image.Image) -> str:
+    """64-bit difference hash: near-identical photos give near-identical hashes."""
+    small = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+    px = list(small.getdata())
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | (px[row * 9 + col] > px[row * 9 + col + 1])
+    return f"{bits:016x}"
+
+
+def hash_distance(a: str, b: str) -> int:
+    return bin(int(a, 16) ^ int(b, 16)).count("1")
+
+
 def process_upload(data: bytes, upload_dir: Path, max_bytes: int, max_side: int) -> dict:
     """Validate an uploaded photo, pull its GPS, and save a clean copy.
 
@@ -63,9 +105,12 @@ def process_upload(data: bytes, upload_dir: Path, max_bytes: int, max_side: int)
         raise BadImage("Only JPEG, PNG or WEBP photos are supported")
 
     gps = read_gps(img)
+    meta = read_meta(img)
+    meta["gps"] = gps is not None
 
     img = ImageOps.exif_transpose(img).convert("RGB")
     img.thumbnail((max_side, max_side))
+    meta["phash"] = image_hash(img)
 
     upload_dir.mkdir(parents=True, exist_ok=True)
     image_id = secrets.token_hex(12)
@@ -79,4 +124,5 @@ def process_upload(data: bytes, upload_dir: Path, max_bytes: int, max_side: int)
         "path": str(path),
         "lat": gps[0] if gps else None,
         "lng": gps[1] if gps else None,
+        "meta": meta,
     }

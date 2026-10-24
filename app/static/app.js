@@ -9,6 +9,7 @@ const STEP_LABELS = {
   file_complaint: "Filed the complaint",
   get_complaint_status: "Fetched the status",
   draft_social_post: "Drafted a social post",
+  get_my_rewards: "Checked your points",
 };
 
 const ISSUE_LABELS = {
@@ -81,6 +82,59 @@ function addSteps(steps) {
   $("log").appendChild(details);
 }
 
+function showTrust(t) {
+  const trusted = t.trust_level === "trusted";
+  $("t-trust").textContent = `${t.trust_score}/100 · ${trusted ? "Trusted" : "Needs verification"}`;
+  $("t-trust").classList.toggle("warn", !trusted);
+  const list = $("trust-reasons");
+  list.replaceChildren();
+  for (const r of t.trust_reasons || []) {
+    const li = document.createElement("li");
+    li.textContent = `${r.text} (${r.points > 0 ? "+" : ""}${r.points})`;
+    list.appendChild(li);
+  }
+  $("trust-details").hidden = !(t.trust_reasons || []).length;
+}
+
+function showRewards(r) {
+  if (!r) return;
+  $("r-total").textContent = r.total;
+  const badges = $("r-badges");
+  badges.replaceChildren();
+  for (const name of r.badges) {
+    const li = document.createElement("li");
+    li.textContent = `🏅 ${name}`;
+    badges.appendChild(li);
+  }
+}
+
+async function loadLeaders() {
+  try {
+    const r = await fetch("/api/leaderboard");
+    if (!r.ok) return;
+    const { leaders } = await r.json();
+    const list = $("leaders");
+    list.replaceChildren();
+    if (!leaders.length) {
+      const li = document.createElement("li");
+      li.textContent = "No points yet. Be the first!";
+      list.appendChild(li);
+    }
+    for (const l of leaders) {
+      const li = document.createElement("li");
+      li.textContent = `${l.name}: ${l.points} pts`;
+      list.appendChild(li);
+    }
+  } catch { /* leaderboard is optional */ }
+}
+
+function showAward(steps) {
+  const filed = (steps || []).find((s) => s.tool === "file_complaint" && s.result && s.result.ticket_id);
+  if (!filed) return;
+  const { points_awarded: pts, points_reason: why } = filed.result;
+  $("r-last").textContent = pts > 0 ? `+${pts} points: ${why}` : `No points this time: ${why}`;
+}
+
 function showTicket(t) {
   if (!t) return;
   $("ticket").hidden = false;
@@ -90,6 +144,7 @@ function showTicket(t) {
   $("t-dept").textContent = t.department;
   $("t-status").textContent = t.status;
   $("t-expected").textContent = t.expected_by;
+  showTrust(t);
   if (t.social) {
     lastPost = t.social.text;
     $("share-x").href = t.social.x_url;
@@ -112,6 +167,9 @@ async function run(label, request) {
     addSteps(res.steps);
     addMessage(res.reply || "Done.", "agent");
     showTicket(res.ticket);
+    showRewards(res.rewards);
+    showAward(res.steps);
+    loadLeaders();
     const status = res.steps && res.steps.find((s) => s.tool === "get_complaint_status");
     if (status && status.result && status.result.status && status.result.id === $("t-id").textContent) {
       $("t-status").textContent = status.result.status;
@@ -237,3 +295,11 @@ $("copy-id").addEventListener("click", (e) => copy($("t-id").textContent, e.curr
 $("copy-post").addEventListener("click", (e) => copy(lastPost, e.currentTarget));
 
 sessionId = storageGet("civic_session");
+loadLeaders();
+if (sessionId) {
+  fetch("/api/rewards", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  }).then((r) => (r.ok ? r.json() : null)).then(showRewards).catch(() => {});
+}

@@ -1,4 +1,5 @@
 import io
+import random
 import re
 
 import pytest
@@ -18,10 +19,23 @@ def _rational(deg: float):
     return (float(d), float(m), float(s))
 
 
-def make_photo(gps=None, fmt="JPEG", size=(640, 480), color=(90, 90, 90)) -> bytes:
-    img = Image.new("RGB", size, color)
+def make_photo(gps=None, fmt="JPEG", size=(640, 480), color=(90, 90, 90), *, seed=None,
+               camera=True, taken=None, software=None) -> bytes:
+    """Test photo. With a seed it gets a random texture, so its image hash is unique."""
+    if seed is None:
+        img = Image.new("RGB", size, color)
+    else:
+        rng = random.Random(seed)
+        small = Image.new("RGB", (16, 12))
+        small.putdata([tuple(rng.randrange(256) for _ in range(3)) for _ in range(16 * 12)])
+        img = small.resize(size, Image.Resampling.BILINEAR)
     exif = Image.Exif()
-    exif[0x010F] = "TestPhone"  # Make
+    if camera:
+        exif[0x010F] = "TestPhone"  # Make
+    if software:
+        exif[0x0131] = software
+    if taken:
+        exif[0x8769] = {0x9003: taken.strftime("%Y:%m:%d %H:%M:%S")}
     if gps:
         lat, lng = gps
         exif[0x8825] = {1: "N" if lat >= 0 else "S", 2: _rational(abs(lat)),
@@ -34,7 +48,8 @@ def make_photo(gps=None, fmt="JPEG", size=(640, 480), color=(90, 90, 90)) -> byt
 class FakeVision:
     def __init__(self):
         self.result = {"category": "pothole", "severity": "high",
-                       "description": "Large pothole in the middle of the road", "confidence": 0.93}
+                       "description": "Large pothole in the middle of the road", "confidence": 0.93,
+                       "source": "camera_photo"}
         self.calls = 0
 
     def analyze(self, image_bytes: bytes) -> dict:

@@ -23,6 +23,7 @@ ADK agent (Gemini) ──calls──►  analyze_photo            Gemini vision,
                                file_complaint           creates the ticket, merges duplicates
                                get_complaint_status     read-only status lookup
                                draft_social_post        X / Instagram post with AMC tags
+                               get_my_rewards           points, badges, recent awards
 ```
 
 A few things the tools enforce on their own, whatever the model says:
@@ -32,6 +33,39 @@ A few things the tools enforce on their own, whatever the model says:
 - If the photo isn't a civic issue or the model isn't confident, the user is asked to confirm first.
 - Reports of the same issue within about 60 m (or the same typed area) in 72 hours are merged into one ticket.
 - There is no tool that changes a ticket's status. Only AMC staff can, through a token-protected endpoint.
+
+## Photo trust score
+
+No single check proves a photo is real, so each report gets a 0-100 score from several signals:
+
+| Signal | Effect |
+|---|---|
+| Camera make/model in the photo's metadata | +20 |
+| Taken in the last 2 days / more than a month old | +15 / -10 |
+| Photo has its own GPS | +15 |
+| Photo GPS more than 2 km from the phone's current location | -25 |
+| Metadata names an AI image tool (Midjourney, Stable Diffusion, ...) | -60 |
+| Gemini: real street photo / screenshot or photo of a screen / AI-looking | +10 / -30 / -50 |
+| Same picture already used in another report (image fingerprint) | -40 |
+
+Starting from 40, a score of 50 or more is **trusted**. Lower scores are still filed but marked
+**needs verification** and earn no points, so genuine reports from older phones aren't blocked.
+
+## Civic points
+
+Points reward outcomes, not uploads, so fake photos don't pay:
+
+| Action | Points |
+|---|---|
+| First to report an issue (trusted photo) | 20 |
+| Confirming someone else's report (trusted photo) | 5 |
+| AMC marks your reported issue resolved | 40 |
+
+Each award is given once per person, ticket and reason, with a cap of 100 points a day. Badges
+(First Report, Road Guardian, Swachh Nagrik, Community Voice, Problem Solver) and an anonymous
+leaderboard keep people coming back. Points are only granted by server-side checks; the agent has
+no tool that hands them out. Real rewards would need phone OTP login, since a browser session can
+be reset.
 
 ## Run it locally
 
@@ -119,6 +153,8 @@ app/
   main.py      API routes, validation, rate limits, security headers
   agent.py     ADK agent and runner
   tools.py     the agent's tools
+  trust.py     photo trust score
+  rewards.py   civic points, badges, leaderboard
   vision.py    Gemini image analysis
   geo.py       ward lookup and geocoding
   images.py    upload checks, GPS read, EXIF strip

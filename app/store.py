@@ -33,6 +33,11 @@ class Store(Protocol):
     def recent_tickets(self, category: str, since: datetime) -> list[dict]: ...
     def add_report(self, ticket_id: str) -> None: ...
     def update_status(self, ticket_id: str, status: str, note: str) -> dict | None: ...
+    def recent_image_hashes(self, since: datetime) -> list[dict]: ...
+    def add_reward(self, entry: dict) -> None: ...
+    def rewards_for(self, session_id: str) -> list[dict]: ...
+    def has_reward(self, session_id: str, ticket_id: str, reason: str) -> bool: ...
+    def top_reporters(self, limit: int) -> list[tuple[str, int]]: ...
 
 
 class SqliteStore:
@@ -48,17 +53,31 @@ class SqliteStore:
                     resolved_wards TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS images (
                     id TEXT PRIMARY KEY, session_id TEXT NOT NULL, path TEXT NOT NULL,
-                    lat REAL, lng REAL, analysis TEXT, created_at TEXT NOT NULL);
+                    lat REAL, lng REAL, analysis TEXT, meta TEXT, phash TEXT, created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS tickets (
                     id TEXT PRIMARY KEY, session_id TEXT NOT NULL, image_id TEXT NOT NULL,
                     category TEXT NOT NULL, severity TEXT NOT NULL, description TEXT NOT NULL,
                     ward TEXT NOT NULL, zone TEXT NOT NULL, department TEXT NOT NULL,
                     lat REAL, lng REAL, area_text TEXT, status TEXT NOT NULL,
                     history TEXT NOT NULL, report_count INTEGER NOT NULL DEFAULT 1,
-                    expected_by TEXT NOT NULL, created_at TEXT NOT NULL);
+                    expected_by TEXT NOT NULL, created_at TEXT NOT NULL,
+                    trust_score INTEGER, trust_level TEXT, trust_reasons TEXT);
+                CREATE TABLE IF NOT EXISTS rewards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+                    ticket_id TEXT NOT NULL, reason TEXT NOT NULL, category TEXT NOT NULL,
+                    points INTEGER NOT NULL, created_at TEXT NOT NULL,
+                    UNIQUE (session_id, ticket_id, reason));
+                CREATE INDEX IF NOT EXISTS idx_images_time ON images(created_at);
                 CREATE INDEX IF NOT EXISTS idx_tickets_cat_time ON tickets(category, created_at);
                 """
             )
+            for table, column, kind in (("images", "meta", "TEXT"), ("images", "phash", "TEXT"),
+                                        ("tickets", "trust_score", "INTEGER"),
+                                        ("tickets", "trust_level", "TEXT"),
+                                        ("tickets", "trust_reasons", "TEXT")):
+                existing = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+                if column not in existing:
+                    self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
             cols = {r[1] for r in self._conn.execute("PRAGMA table_info(sessions)")}
             if "pending_image_id" not in cols:
                 self._conn.execute("ALTER TABLE sessions ADD COLUMN pending_image_id TEXT")
@@ -112,15 +131,18 @@ class SqliteStore:
 
     def save_image(self, image):
         self._exec(
-            "INSERT INTO images (id, session_id, path, lat, lng, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO images (id, session_id, path, lat, lng, meta, phash, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (image["id"], image["session_id"], image["path"], image.get("lat"), image.get("lng"),
+             json.dumps(image.get("meta") or {}), (image.get("meta") or {}).get("phash"),
              now().isoformat()),
         )
 
     def get_image(self, image_id):
         row = self._one("SELECT * FROM images WHERE id = ?", (image_id,))
-        if row and row["analysis"]:
-            row["analysis"] = json.loads(row["analysis"])
+        if row:
+            row["analysis"] = json.loads(row["analysis"]) if row["analysis"] else None
+            row["meta"] = json.loads(row["meta"]) if row.get("meta") else {}
         return row
 
     def set_image_analysis(self, image_id, analysis):
@@ -130,19 +152,19 @@ class SqliteStore:
         self._exec(
             """INSERT INTO tickets (id, session_id, image_id, category, severity, description,
                ward, zone, department, lat, lng, area_text, status, history, report_count,
-               expected_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               expected_by, created_at, trust_score, trust_level, trust_reasons)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ticket["id"], ticket["session_id"], ticket["image_id"], ticket["category"],
              ticket["severity"], ticket["description"], ticket["ward"], ticket["zone"],
              ticket["department"], ticket.get("lat"), ticket.get("lng"), ticket.get("area_text"),
              ticket["status"], json.dumps(ticket["history"]), ticket.get("report_count", 1),
-             ticket["expected_by"], ticket["created_at"]),
+             ticket["expected_by"], ticket["created_at"], ticket.get("trust_score"),
+             ticket.get("trust_level"), json.dumps(ticket.get("trust_reasons") or [])),
         )
 
     def get_ticket(self, ticket_id):
         row = self._one("SELECT * FROM tickets WHERE id = ?", (ticket_id,))
-        if row:
-            row["history"] = json.loads(row["history"])
-        return row
+        return _decode_ticket(row) if row else None
 
     def recent_tickets(self, category, since):
         with self._lock:
@@ -150,12 +172,7 @@ class SqliteStore:
                 "SELECT * FROM tickets WHERE category = ? AND created_at >= ?",
                 (category, since.isoformat()),
             ).fetchall()
-        out = []
-        for r in rows:
-            d = dict(r)
-            d["history"] = json.loads(d["history"])
-            out.append(d)
-        return out
+        return [_decode_ticket(dict(r)) for r in rows]
 
     def add_report(self, ticket_id):
         self._exec("UPDATE tickets SET report_count = report_count + 1 WHERE id = ?", (ticket_id,))
@@ -170,6 +187,36 @@ class SqliteStore:
             self._conn.execute("UPDATE tickets SET status = ?, history = ? WHERE id = ?",
                                (status, json.dumps(history), ticket_id))
         return self.get_ticket(ticket_id)
+
+    def recent_image_hashes(self, since):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, session_id, phash FROM images WHERE created_at >= ? AND phash IS NOT NULL",
+                (since.isoformat(),)).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_reward(self, entry):
+        self._exec(
+            "INSERT OR IGNORE INTO rewards (session_id, ticket_id, reason, category, points, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (entry["session_id"], entry["ticket_id"], entry["reason"], entry["category"],
+             entry["points"], entry["created_at"]))
+
+    def rewards_for(self, session_id):
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM rewards WHERE session_id = ?", (session_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def has_reward(self, session_id, ticket_id, reason):
+        return self._one("SELECT 1 FROM rewards WHERE session_id = ? AND ticket_id = ? AND reason = ?",
+                         (session_id, ticket_id, reason)) is not None
+
+    def top_reporters(self, limit):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT session_id, SUM(points) AS total FROM rewards GROUP BY session_id "
+                "ORDER BY total DESC LIMIT ?", (limit,)).fetchall()
+        return [(r["session_id"], r["total"]) for r in rows]
 
 
 class FirestoreStore:
@@ -220,7 +267,9 @@ class FirestoreStore:
         return list(data.get("resolved_wards", [])) if data else []
 
     def save_image(self, image):
-        self._doc("images", image["id"]).set({**image, "analysis": None, "created_at": now().isoformat()})
+        self._doc("images", image["id"]).set({**image, "analysis": None,
+                                               "phash": (image.get("meta") or {}).get("phash"),
+                                               "created_at": now().isoformat()})
 
     def get_image(self, image_id):
         return self._get("images", image_id)
@@ -251,6 +300,39 @@ class FirestoreStore:
         entry = {"status": status, "at": now().isoformat(), "note": note}
         ref.update({"status": status, "history": self._fs.ArrayUnion([entry])})
         return self.get_ticket(ticket_id)
+
+    def recent_image_hashes(self, since):
+        query = self._db.collection("images").where(
+            filter=self._fs.FieldFilter("created_at", ">=", since.isoformat()))
+        return [{"id": d.id, "session_id": d.get("session_id"), "phash": d.get("phash")}
+                for d in query.stream() if d.get("phash")]
+
+    def add_reward(self, entry):
+        # one document per (session, ticket, reason) makes awards idempotent
+        key = f"{entry['session_id']}:{entry['ticket_id']}:{entry['reason']}"
+        self._doc("rewards", key).set(entry)
+
+    def rewards_for(self, session_id):
+        query = self._db.collection("rewards").where(
+            filter=self._fs.FieldFilter("session_id", "==", session_id))
+        return [d.to_dict() for d in query.stream()]
+
+    def has_reward(self, session_id, ticket_id, reason):
+        return self._doc("rewards", f"{session_id}:{ticket_id}:{reason}").get().exists
+
+    def top_reporters(self, limit):
+        totals: dict[str, int] = {}
+        for d in self._db.collection("rewards").stream():
+            totals[d.get("session_id")] = totals.get(d.get("session_id"), 0) + d.get("points")
+        return sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+
+
+def _decode_ticket(row: dict) -> dict:
+    row["history"] = json.loads(row["history"])
+    row["trust_reasons"] = json.loads(row["trust_reasons"]) if row.get("trust_reasons") else []
+    return row
+
+
 
 
 def make_store(settings) -> Store:
