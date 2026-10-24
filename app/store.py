@@ -53,7 +53,8 @@ class SqliteStore:
                     resolved_wards TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS images (
                     id TEXT PRIMARY KEY, session_id TEXT NOT NULL, path TEXT NOT NULL,
-                    lat REAL, lng REAL, analysis TEXT, meta TEXT, phash TEXT, created_at TEXT NOT NULL);
+                    lat REAL, lng REAL, analysis TEXT, meta TEXT, phash TEXT, note TEXT,
+                    created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS tickets (
                     id TEXT PRIMARY KEY, session_id TEXT NOT NULL, image_id TEXT NOT NULL,
                     category TEXT NOT NULL, severity TEXT NOT NULL, description TEXT NOT NULL,
@@ -61,7 +62,7 @@ class SqliteStore:
                     lat REAL, lng REAL, area_text TEXT, status TEXT NOT NULL,
                     history TEXT NOT NULL, report_count INTEGER NOT NULL DEFAULT 1,
                     expected_by TEXT NOT NULL, created_at TEXT NOT NULL,
-                    trust_score INTEGER, trust_level TEXT, trust_reasons TEXT);
+                    trust_score INTEGER, trust_level TEXT, trust_reasons TEXT, user_note TEXT);
                 CREATE TABLE IF NOT EXISTS rewards (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
                     ticket_id TEXT NOT NULL, reason TEXT NOT NULL, category TEXT NOT NULL,
@@ -72,6 +73,7 @@ class SqliteStore:
                 """
             )
             for table, column, kind in (("images", "meta", "TEXT"), ("images", "phash", "TEXT"),
+                                        ("images", "note", "TEXT"), ("tickets", "user_note", "TEXT"),
                                         ("tickets", "trust_score", "INTEGER"),
                                         ("tickets", "trust_level", "TEXT"),
                                         ("tickets", "trust_reasons", "TEXT")):
@@ -131,11 +133,11 @@ class SqliteStore:
 
     def save_image(self, image):
         self._exec(
-            "INSERT INTO images (id, session_id, path, lat, lng, meta, phash, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO images (id, session_id, path, lat, lng, meta, phash, note, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (image["id"], image["session_id"], image["path"], image.get("lat"), image.get("lng"),
              json.dumps(image.get("meta") or {}), (image.get("meta") or {}).get("phash"),
-             now().isoformat()),
+             image.get("note"), now().isoformat()),
         )
 
     def get_image(self, image_id):
@@ -152,14 +154,15 @@ class SqliteStore:
         self._exec(
             """INSERT INTO tickets (id, session_id, image_id, category, severity, description,
                ward, zone, department, lat, lng, area_text, status, history, report_count,
-               expected_by, created_at, trust_score, trust_level, trust_reasons)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               expected_by, created_at, trust_score, trust_level, trust_reasons, user_note)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ticket["id"], ticket["session_id"], ticket["image_id"], ticket["category"],
              ticket["severity"], ticket["description"], ticket["ward"], ticket["zone"],
              ticket["department"], ticket.get("lat"), ticket.get("lng"), ticket.get("area_text"),
              ticket["status"], json.dumps(ticket["history"]), ticket.get("report_count", 1),
              ticket["expected_by"], ticket["created_at"], ticket.get("trust_score"),
-             ticket.get("trust_level"), json.dumps(ticket.get("trust_reasons") or [])),
+             ticket.get("trust_level"), json.dumps(ticket.get("trust_reasons") or []),
+             ticket.get("user_note")),
         )
 
     def get_ticket(self, ticket_id):

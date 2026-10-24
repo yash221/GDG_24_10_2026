@@ -95,7 +95,7 @@ class FakeAgent:
         if analysis.get("category") == "not_civic" or analysis.get("confidence", 0) < 0.6:
             return {"reply": "Not sure what this is. Can you confirm the issue?", "steps": steps}
         loc = call(tools.get_photo_location, image_id=image_id)
-        area = re.search(r'Area I typed: "(.*)"', text)
+        area = re.search(r'Area I typed: "(.*?)"', text)
         area = area.group(1) if area else ""
         if loc.get("has_location"):
             ward = call(tools.find_ward_by_coordinates, latitude=loc["latitude"], longitude=loc["longitude"])

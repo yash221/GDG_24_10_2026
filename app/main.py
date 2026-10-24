@@ -140,7 +140,9 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
         if filed:
             t = store.get_ticket(filed[-1]["result"]["ticket_id"])
             if t:
-                ticket = {**tools.public_view(t), "social": tools.social_post(t)}
+                # the reporter sees their own note; the public view never includes it
+                note = t.get("user_note") if t["session_id"] == session_id else None
+                ticket = {**tools.public_view(t), "social": tools.social_post(t), "user_note": note}
         return {**result, "ticket": ticket, "rewards": rewards.summary(store, session_id)}
 
     @app.get("/health")
@@ -156,6 +158,7 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
 
     @app.post("/api/report")
     async def report(session_id: str = Form(...), area_text: str = Form("", max_length=100),
+                     description: str = Form("", max_length=300),
                      lat: float | None = Form(None, ge=-90, le=90),
                      lng: float | None = Form(None, ge=-180, le=180),
                      captured_live: bool = Form(False),
@@ -170,6 +173,7 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
         except BadImage as e:
             raise HTTPException(400, str(e))
         image["meta"]["live_capture"] = captured_live
+        image["note"] = " ".join(description.split()) or None
         # phone browsers often strip GPS from uploads, so the page can send the
         # device location instead; the photo's own GPS wins when both exist
         if image["lat"] is None and lat is not None and lng is not None:
@@ -184,7 +188,8 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
         has_gps = "yes" if image["lat"] is not None else "no"
         msg = (f"I want to report a civic issue. Photo image_id: {image['id']}. "
                f"Location available: {has_gps}. "
-               + (f'Area I typed: "{area}"' if area else "I did not type an area."))
+               + (f'Area I typed: "{area}". ' if area else "I did not type an area. ")
+               + (f'My description of the problem: "{image["note"]}"' if image["note"] else ""))
         return await run_agent(session_id, msg)
 
     @app.post("/api/chat")

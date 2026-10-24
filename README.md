@@ -12,7 +12,7 @@ Built for a GDG hackathon (Agents track) with Google ADK and Gemini.
 ## How it works
 
 ```
-photo (+ optional area name or device location)
+photo (+ optional description, area name or device location)
    │
    ▼
 ADK agent (Gemini) ──calls──►  analyze_photo            Gemini vision, structured JSON

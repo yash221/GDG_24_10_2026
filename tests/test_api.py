@@ -105,3 +105,30 @@ def test_no_pending_photo_after_filing(app_env, session_id):
     client, store, *_ = app_env
     report(client, session_id, make_photo(gps=LAW_GARDEN))
     assert store.get_pending_image(session_id) is None
+
+
+def test_description_is_saved_and_shown_only_to_reporter(app_env, session_id):
+    client, store, vision, agent = app_env
+    note = "Deep pothole near the bus stop, bikes keep slipping"
+    r = client.post("/api/report", data={"session_id": session_id, "area_text": "CG Road", "description": note},
+                    files={"photo": ("x.jpg", make_photo(), "image/jpeg")})
+    t = r.json()["ticket"]
+    assert t["ward"] == "Navrangpura"          # area still parsed correctly
+    assert t["user_note"] == note              # reporter sees it
+    assert note in agent.messages[-1]          # agent got it as context
+    public = client.get(f"/api/tickets/{t['id']}").json()
+    assert "user_note" not in public           # strangers don't
+    assert note not in t["social"]["text"]     # never in public posts
+
+
+def test_description_length_limit(client, session_id):
+    r = client.post("/api/report", data={"session_id": session_id, "description": "a" * 301},
+                    files={"photo": ("x.jpg", make_photo(), "image/jpeg")})
+    assert r.status_code == 422
+
+
+def test_description_whitespace_is_normalised(app_env, session_id):
+    client, store, *_ = app_env
+    r = client.post("/api/report", data={"session_id": session_id, "area_text": "Paldi", "description": "  big \n\n hole  "},
+                    files={"photo": ("x.jpg", make_photo(), "image/jpeg")})
+    assert r.json()["ticket"]["user_note"] == "big hole"

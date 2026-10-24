@@ -84,7 +84,9 @@ body {
 #chat-form { margin-top: 12px; }
 .row input { flex: 1; min-width: 0; }
 
-input[type="text"] {
+textarea { width: 100%; resize: vertical; margin-top: 6px; }
+
+input[type="text"], textarea {
   font: inherit;
   padding: 10px 12px;
   min-height: 44px;

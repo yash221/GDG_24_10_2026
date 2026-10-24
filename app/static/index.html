@@ -39,6 +39,11 @@
           <button type="button" id="camera-close" class="ghost">Cancel</button>
         </div>
       </div>
+      <label for="note" class="field-label">What's the problem? <span class="optional">(optional)</span></label>
+      <textarea id="note" name="description" maxlength="300" rows="2"
+                placeholder="e.g. Deep pothole near the bus stop, bikes keep slipping" aria-describedby="note-help"></textarea>
+      <p id="note-help" class="hint">Helps the agent when the photo isn't clear. Don't include phone numbers or personal details.</p>
+
       <p id="photo-help" class="hint">JPEG, PNG or WEBP. Large photos are resized automatically.</p>
 
       <label for="area" class="field-label">Area or landmark <span class="optional">(optional if the photo has location)</span></label>
@@ -65,6 +70,7 @@
         <dt>Department</dt><dd id="t-dept"></dd>
         <dt>Status</dt><dd><span id="t-status" class="pill"></span></dd>
         <dt>Expected by</dt><dd id="t-expected"></dd>
+        <dt id="t-note-label" hidden>Your note</dt><dd id="t-note" hidden></dd>
         <dt>Photo trust</dt><dd><span id="t-trust" class="pill"></span></dd>
       </dl>
       <details id="trust-details" class="steps">

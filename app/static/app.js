@@ -148,6 +148,8 @@ function showTicket(t) {
   $("t-status").textContent = t.status;
   $("t-expected").textContent = t.expected_by;
   showTrust(t);
+  $("t-note").textContent = t.user_note || "";
+  $("t-note").hidden = $("t-note-label").hidden = !t.user_note;
   if (t.social) {
     lastPost = t.social.text;
     $("share-x").href = t.social.x_url;
@@ -160,12 +162,21 @@ function setBusy(on) {
   for (const b of document.querySelectorAll("#chat-form button, .chip")) b.disabled = on;
 }
 
-async function run(label, request) {
+// labels can be a list: the message moves through them so a slow reply
+// from the free Gemini tier doesn't look like the page froze
+async function run(labels, request) {
   if (busy) return;
   setBusy(true);
-  const thinking = addMessage(label, "thinking");
+  labels = Array.isArray(labels) ? labels : [labels];
+  const thinking = addMessage(labels[0], "thinking");
+  let step = 0;
+  const ticker = setInterval(() => {
+    step = Math.min(step + 1, labels.length - 1);
+    thinking.textContent = labels[step];
+  }, 6000);
   try {
     const res = await request();
+    clearInterval(ticker);
     thinking.remove();
     addSteps(res.steps);
     addMessage(res.reply || "Done.", "agent");
@@ -178,6 +189,7 @@ async function run(label, request) {
       $("t-status").textContent = status.result.status;
     }
   } catch (err) {
+    clearInterval(ticker);
     thinking.remove();
     addMessage(err.message, "error");
   } finally {
@@ -291,6 +303,22 @@ $("locate").addEventListener("click", async () => {
   $("loc-status").textContent = `✓ Using your current location (about ${accuracy} m accurate) if the photo has none.`;
 });
 
+// hosting limits request bodies to ~4.5 MB, so big phone photos are shrunk
+// here first (this drops the photo's GPS, so the 📍 button or area is needed)
+const MAX_UPLOAD = 4 * 1024 * 1024;
+
+async function shrink(file) {
+  if (file.size <= MAX_UPLOAD) return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+  return new File([blob], "photo.jpg", { type: "image/jpeg" });
+}
+
 $("report-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   let file = selectedFile;
@@ -302,13 +330,21 @@ $("report-form").addEventListener("submit", async (e) => {
     return;
   }
   const area = $("area").value.trim();
+  const note = $("note").value.trim();
   addMessage(area ? `Reporting an issue near ${area}` : "Reporting an issue", "user");
-  run("Checking the photo and finding the right department...", () =>
+  run([
+    "Looking at the photo...",
+    "Checking where this is and finding the AMC ward...",
+    "Picking the right department...",
+    "Checking the photo is genuine and filing the complaint...",
+    "Still working. The AI is busy right now, this can take up to a minute...",
+  ], () =>
     api("/api/report", (sid) => {
       const fd = new FormData();
       fd.append("session_id", sid);
       fd.append("photo", file);
       fd.append("area_text", area);
+      fd.append("description", note);
       if (capturedLive) fd.append("captured_live", "true");
       if (deviceLocation) {
         fd.append("lat", deviceLocation.lat);

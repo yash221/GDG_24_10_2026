@@ -261,6 +261,7 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
         "trust_score": checked["score"],
         "trust_level": checked["level"],
         "trust_reasons": checked["reasons"],
+        "user_note": image.get("note"),
     }
     store.create_ticket(ticket)
     store.set_last_ticket(tool_context.user_id, ticket["id"])
