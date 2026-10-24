@@ -135,37 +135,42 @@ $("photo").addEventListener("change", () => {
   $("submit").disabled = busy;
 });
 
-$("locate").addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    $("loc-status").textContent = "Location isn't available on this device. Type the area instead.";
+const LOCATION_ERRORS = {
+  1: "Location permission is blocked. Allow it from the 🔒 icon in the address bar, or type the area.",
+  2: "Your device couldn't find its location. Turn on location services, or type the area.",
+  3: "Getting your location took too long. Try again, or type the area.",
+};
+
+function getPosition(options) {
+  return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, options));
+}
+
+$("locate").addEventListener("click", async () => {
+  if (!navigator.geolocation || !window.isSecureContext) {
+    $("loc-status").textContent = "Location needs a secure (https) page. Type the area instead.";
     return;
   }
   $("loc-status").textContent = "Getting your location...";
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      deviceLocation = { lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6) };
-      $("loc-status").textContent = "✓ Using your current location (if the photo has none).";
-    },
-    () => { $("loc-status").textContent = "Couldn't get your location. Type the area instead."; },
-    { enableHighAccuracy: true, timeout: 10000 },
-  );
+  let pos;
+  try {
+    // precise first (phones with GPS), then a quick network-based fix (laptops)
+    pos = await getPosition({ enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+  } catch (err) {
+    if (err.code === 1) {
+      $("loc-status").textContent = LOCATION_ERRORS[1];
+      return;
+    }
+    try {
+      pos = await getPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
+    } catch (err2) {
+      $("loc-status").textContent = LOCATION_ERRORS[err2.code] || LOCATION_ERRORS[2];
+      return;
+    }
+  }
+  deviceLocation = { lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6) };
+  const accuracy = Math.round(pos.coords.accuracy);
+  $("loc-status").textContent = `✓ Using your current location (about ${accuracy} m accurate) if the photo has none.`;
 });
-
-// hosting limits request bodies to ~4.5 MB, so big phone photos are shrunk
-// here first (this drops the photo's GPS, so the 📍 button or area is needed)
-const MAX_UPLOAD = 4 * 1024 * 1024;
-
-async function shrink(file) {
-  if (file.size <= MAX_UPLOAD) return file;
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
-  return new File([blob], "photo.jpg", { type: "image/jpeg" });
-}
 
 $("report-form").addEventListener("submit", async (e) => {
   e.preventDefault();
