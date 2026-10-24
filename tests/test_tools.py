@@ -196,6 +196,13 @@ def test_social_post(services, store, tmp_path):
     assert post["x_url"].startswith("https://twitter.com/intent/tweet?text=")
     # never leak coordinates into a public post
     assert "23.02" not in post["text"] and "72.56" not in post["text"]
+    assert "in Navrangpura ward." in post["text"]
+
+
+def test_social_post_with_typed_area(services, store, tmp_path):
+    ctx = Ctx("s1")
+    res = file_one(store, tmp_path, ctx, gps=None, area="CG Road")
+    assert "in CG Road, Navrangpura ward." in tools.draft_social_post(res["ticket_id"], ctx)["text"]
 
 
 def test_data_files_are_consistent():

@@ -301,10 +301,11 @@ def social_post(ticket: dict) -> dict:
         "pothole": "Pothole", "garbage": "Garbage pile-up", "streetlight": "Broken streetlight",
         "waterlogging": "Waterlogging", "other_civic": "Civic issue",
     }.get(ticket["category"], "Civic issue")
-    place = ticket.get("area_text") or ticket["ward"]
+    area = ticket.get("area_text")
+    place = f"{area}, {ticket['ward']} ward" if area else f"{ticket['ward']} ward"
     ward_tag = "#" + re.sub(r"[^A-Za-z0-9]", "", ticket["ward"])
     text = (
-        f"{label} in {place}, {ticket['ward']} ward. Reported to {ticket['department']}, "
+        f"{label} in {place}. Reported to {ticket['department']}, "
         f"tracking ID {ticket['id']}. Please take a look. {AMC_HANDLE} {ward_tag} #Ahmedabad #FixMyAmdavad"
     )
     return {
