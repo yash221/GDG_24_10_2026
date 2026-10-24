@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Civic Complaint Agent</title>
+  <meta name="description" content="Report a pothole, garbage, broken streetlight or waterlogging in Ahmedabad with one photo.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#chat-title">Skip to chat</a>
+
+  <header class="top">
+    <h1>Civic Complaint Agent</h1>
+    <p>Snap a pothole, garbage, a broken streetlight or waterlogging. We find the ward and department and file it with AMC.</p>
+  </header>
+
+  <main>
+    <form id="report-form" class="card" autocomplete="off" aria-labelledby="report-title">
+      <h2 id="report-title" class="section-title">Report an issue</h2>
+
+      <input id="photo" class="visually-hidden" name="photo" type="file"
+             accept="image/jpeg,image/png,image/webp" required aria-describedby="photo-help">
+      <label class="photo-drop" for="photo">
+        <img id="preview" alt="Selected photo" hidden>
+        <span id="photo-hint"><span aria-hidden="true">📷</span> Take or choose a photo</span>
+      </label>
+      <p id="photo-help" class="hint">JPEG, PNG or WEBP, up to 8 MB.</p>
+
+      <label for="area" class="field-label">Area or landmark <span class="optional">(optional if the photo has location)</span></label>
+      <div class="row">
+        <input id="area" name="area_text" type="text" maxlength="100" placeholder="e.g. CG Road, near Law Garden">
+        <button type="button" id="locate" class="ghost" aria-label="Use my current location" title="Use my current location">
+          <span aria-hidden="true">📍</span>
+        </button>
+      </div>
+      <p id="loc-status" class="hint" role="status">Location from the photo is used if available.</p>
+
+      <button id="submit" type="submit" disabled>Report issue</button>
+    </form>
+
+    <section id="ticket" class="card ticket" aria-labelledby="ticket-title" hidden>
+      <div class="ticket-head">
+        <h2 id="ticket-title" class="label">Tracking ID</h2>
+        <button type="button" id="copy-id" class="ghost small" aria-label="Copy tracking ID">Copy</button>
+      </div>
+      <p id="t-id" class="ticket-id"></p>
+      <dl>
+        <dt>Issue</dt><dd id="t-issue"></dd>
+        <dt>Ward</dt><dd id="t-ward"></dd>
+        <dt>Department</dt><dd id="t-dept"></dd>
+        <dt>Status</dt><dd><span id="t-status" class="pill"></span></dd>
+        <dt>Expected by</dt><dd id="t-expected"></dd>
+      </dl>
+      <div class="share">
+        <a id="share-x" class="button ghost" target="_blank" rel="noopener noreferrer">Post on X<span class="visually-hidden"> (opens in a new tab)</span></a>
+        <button type="button" id="copy-post" class="ghost">Copy post for Instagram</button>
+      </div>
+    </section>
+
+    <section class="card chat" aria-labelledby="chat-title">
+      <h2 id="chat-title" class="section-title" tabindex="-1">Ask the agent</h2>
+      <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation with the agent"></div>
+      <div class="chips">
+        <button type="button" class="chip" data-msg="What's the status?">What's the status?</button>
+        <button type="button" class="chip" data-msg="Draft a social media post for my complaint">Draft a post</button>
+      </div>
+      <form id="chat-form" class="row">
+        <label for="message" class="visually-hidden">Message</label>
+        <input id="message" type="text" maxlength="500" placeholder="Ask about your complaint">
+        <button type="submit">Send</button>
+      </form>
+    </section>
+
+    <p class="footnote">Demo: the AMC system here is a mock, no real complaint is filed.</p>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

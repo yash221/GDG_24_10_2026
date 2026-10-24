@@ -1,0 +1,29 @@
+# Editors
+.vscode/
+.idea/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Runtime data
+*.db
+*.sqlite3
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db

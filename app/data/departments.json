@@ -1,0 +1,7 @@
+{
+  "pothole": {"department": "Roads & Engineering", "sla_days": 7},
+  "garbage": {"department": "Solid Waste Management", "sla_days": 2},
+  "streetlight": {"department": "Light Department (Electrical)", "sla_days": 3},
+  "waterlogging": {"department": "Storm Water Drainage", "sla_days": 2},
+  "other_civic": {"department": "General Complaints Cell", "sla_days": 10}
+}
