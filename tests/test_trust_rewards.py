@@ -171,3 +171,18 @@ def test_agent_tools_cannot_grant_points():
         assert "points" not in params and "reason" not in params
     src = inspect.getsource(tools.get_my_rewards)
     assert "rewards.award(" not in src and "add_reward" not in src
+
+
+def test_live_camera_photo_is_trusted(client, session_id):
+    # the in-page camera produces a plain JPEG with no EXIF at all
+    r = client.post("/api/report", data={"session_id": session_id, "area_text": "CG Road", "captured_live": "true"},
+                    files={"photo": ("camera.jpg", make_photo(seed=30, camera=False), "image/jpeg")})
+    t = r.json()["ticket"]
+    assert t["trust_level"] == "trusted"
+    assert any("in-app camera" in reason["text"] for reason in t["trust_reasons"])
+
+
+def test_upload_without_metadata_is_not_marked_live(client, session_id):
+    r = client.post("/api/report", data={"session_id": session_id, "area_text": "Paldi"},
+                    files={"photo": ("x.jpg", make_photo(seed=31, camera=False), "image/jpeg")})
+    assert not any("in-app camera" in reason["text"] for reason in r.json()["ticket"]["trust_reasons"])

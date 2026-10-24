@@ -158,6 +158,7 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
     async def report(session_id: str = Form(...), area_text: str = Form("", max_length=100),
                      lat: float | None = Form(None, ge=-90, le=90),
                      lng: float | None = Form(None, ge=-180, le=180),
+                     captured_live: bool = Form(False),
                      photo: UploadFile = File(...)):
         require_session(session_id)
         limit(f"report:{session_id}", settings.reports_per_hour)
@@ -168,6 +169,7 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
                                             settings.max_upload_bytes, settings.max_image_side)
         except BadImage as e:
             raise HTTPException(400, str(e))
+        image["meta"]["live_capture"] = captured_live
         # phone browsers often strip GPS from uploads, so the page can send the
         # device location instead; the photo's own GPS wins when both exist
         if image["lat"] is None and lat is not None and lng is not None:

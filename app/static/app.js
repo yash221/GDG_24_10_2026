@@ -21,6 +21,9 @@ let sessionId = null;
 let deviceLocation = null;
 let lastPost = "";
 let busy = false;
+let selectedFile = null;
+let capturedLive = false;
+let stream = null;
 
 function storageGet(key) {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -153,7 +156,7 @@ function showTicket(t) {
 
 function setBusy(on) {
   busy = on;
-  $("submit").disabled = on || !$("photo").files.length;
+  $("submit").disabled = on || !selectedFile;
   for (const b of document.querySelectorAll("#chat-form button, .chip")) b.disabled = on;
 }
 
@@ -182,15 +185,73 @@ async function run(label, request) {
   }
 }
 
-$("photo").addEventListener("change", () => {
-  const file = $("photo").files[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  $("preview").src = url;
-  $("preview").alt = `Selected photo: ${file.name}`;
+function usePhoto(file, live) {
+  selectedFile = file;
+  capturedLive = live;
+  $("preview").src = URL.createObjectURL(file);
+  $("preview").alt = live ? "Photo taken with the camera" : `Selected photo: ${file.name}`;
   $("preview").hidden = false;
   $("photo-hint").hidden = true;
   $("submit").disabled = busy;
+}
+
+$("pick-photo").addEventListener("click", () => $("photo").click());
+$("photo").addEventListener("change", () => {
+  if ($("photo").files[0]) usePhoto($("photo").files[0], false);
+});
+// phones without live camera access fall back to the system camera app
+$("camera-input").addEventListener("change", () => {
+  if ($("camera-input").files[0]) usePhoto($("camera-input").files[0], false);
+});
+
+function closeCamera() {
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = null;
+  $("camera").hidden = true;
+  $("take-photo").focus();
+}
+
+$("take-photo").addEventListener("click", async () => {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+    $("camera-input").click();
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+  } catch (err) {
+    if (err && err.name === "NotAllowedError") {
+      addMessage("Camera permission is blocked. Allow it from the 🔒 icon in the address bar, or upload a photo.", "error");
+    } else {
+      $("camera-input").click();
+    }
+    return;
+  }
+  $("camera-view").srcObject = stream;
+  $("camera").hidden = false;
+  $("snap").focus();
+  // a live photo has no GPS of its own, so grab the device location now
+  if (!deviceLocation) $("locate").click();
+});
+
+$("snap").addEventListener("click", () => {
+  const video = $("camera-view");
+  const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob((blob) => {
+    closeCamera();
+    if (blob) usePhoto(new File([blob], "camera.jpg", { type: "image/jpeg" }), true);
+  }, "image/jpeg", 0.9);
+});
+
+$("camera-close").addEventListener("click", closeCamera);
+$("camera").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeCamera();
 });
 
 const LOCATION_ERRORS = {
@@ -232,7 +293,7 @@ $("locate").addEventListener("click", async () => {
 
 $("report-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  let file = $("photo").files[0];
+  let file = selectedFile;
   if (!file) return;
   try {
     file = await shrink(file);
@@ -248,6 +309,7 @@ $("report-form").addEventListener("submit", async (e) => {
       fd.append("session_id", sid);
       fd.append("photo", file);
       fd.append("area_text", area);
+      if (capturedLive) fd.append("captured_live", "true");
       if (deviceLocation) {
         fd.append("lat", deviceLocation.lat);
         fd.append("lng", deviceLocation.lng);

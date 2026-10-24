@@ -19,12 +19,26 @@
     <form id="report-form" class="card" autocomplete="off" aria-labelledby="report-title">
       <h2 id="report-title" class="section-title">Report an issue</h2>
 
-      <input id="photo" class="visually-hidden" name="photo" type="file"
-             accept="image/jpeg,image/png,image/webp" required aria-describedby="photo-help">
-      <label class="photo-drop" for="photo">
+      <input id="photo" class="visually-hidden" name="photo" type="file" tabindex="-1"
+             accept="image/jpeg,image/png,image/webp" aria-hidden="true">
+      <input id="camera-input" class="visually-hidden" type="file" tabindex="-1"
+             accept="image/*" capture="environment" aria-hidden="true">
+      <div class="photo-drop" id="photo-box">
         <img id="preview" alt="Selected photo" hidden>
-        <span id="photo-hint"><span aria-hidden="true">📷</span> Take or choose a photo</span>
-      </label>
+        <span id="photo-hint">Add a photo of the problem</span>
+      </div>
+      <div class="photo-actions">
+        <button type="button" id="take-photo"><span aria-hidden="true">📷</span> Take photo</button>
+        <button type="button" id="pick-photo" class="ghost"><span aria-hidden="true">🖼️</span> Upload photo</button>
+      </div>
+
+      <div id="camera" class="camera" hidden role="dialog" aria-modal="true" aria-label="Camera">
+        <video id="camera-view" autoplay playsinline muted aria-label="Camera preview"></video>
+        <div class="photo-actions">
+          <button type="button" id="snap">Capture</button>
+          <button type="button" id="camera-close" class="ghost">Cancel</button>
+        </div>
+      </div>
       <p id="photo-help" class="hint">JPEG, PNG or WEBP. Large photos are resized automatically.</p>
 
       <label for="area" class="field-label">Area or landmark <span class="optional">(optional if the photo has location)</span></label>

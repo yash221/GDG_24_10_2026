@@ -40,7 +40,7 @@ No single check proves a photo is real, so each report gets a 0-100 score from s
 
 | Signal | Effect |
 |---|---|
-| Camera make/model in the photo's metadata | +20 |
+| Taken live with the in-app camera / camera make+model in metadata | +25 / +20 |
 | Taken in the last 2 days / more than a month old | +15 / -10 |
 | Photo has its own GPS | +15 |
 | Photo GPS more than 2 km from the phone's current location | -25 |

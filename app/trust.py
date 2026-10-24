@@ -14,7 +14,11 @@ def score(meta: dict, analysis: dict, reused: bool, now: datetime) -> dict:
     meta = meta or {}
     reasons: list[tuple[str, int]] = []
 
-    if meta.get("camera"):
+    if meta.get("live_capture"):
+        # set by the page's own camera; a determined attacker could fake the flag
+        # through the API, which is why it is worth less than the signals combined
+        reasons.append(("Taken live with the in-app camera", 25))
+    elif meta.get("camera"):
         reasons.append(("Taken on a phone or camera", 20))
     if meta.get("taken_at"):
         try:
