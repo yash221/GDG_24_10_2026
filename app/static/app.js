@@ -151,12 +151,30 @@ $("locate").addEventListener("click", () => {
   );
 });
 
-$("report-form").addEventListener("submit", (e) => {
+// hosting limits request bodies to ~4.5 MB, so big phone photos are shrunk
+// here first (this drops the photo's GPS, so the 📍 button or area is needed)
+const MAX_UPLOAD = 4 * 1024 * 1024;
+
+async function shrink(file) {
+  if (file.size <= MAX_UPLOAD) return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+  return new File([blob], "photo.jpg", { type: "image/jpeg" });
+}
+
+$("report-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const file = $("photo").files[0];
+  let file = $("photo").files[0];
   if (!file) return;
-  if (file.size > 8 * 1024 * 1024) {
-    addMessage("That photo is over 8 MB. Please pick a smaller one.", "error");
+  try {
+    file = await shrink(file);
+  } catch {
+    addMessage("Couldn't read that photo. Please try a JPEG or PNG.", "error");
     return;
   }
   const area = $("area").value.trim();

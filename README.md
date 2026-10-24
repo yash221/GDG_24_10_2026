@@ -83,6 +83,14 @@ Known item: `pip-audit` flags `opentelemetry-api` 1.44.0 (CVE-2026-114603, fixed
 It comes in through `google-adk`, which currently caps it at 1.44, and this app doesn't
 configure any telemetry exporter. Upgrade once ADK allows it.
 
+## Deploy on Vercel
+
+Import the GitHub repo in Vercel (framework preset: Other) and add these environment variables:
+`GOOGLE_API_KEY`, `GEMINI_MODEL`, `VISION_MODEL`, `ADMIN_TOKEN`. `vercel.json` routes every request
+to `api/index.py`. By default the demo keeps its SQLite file in `/tmp`, which resets when the
+instance restarts; set `STORE=firestore` and `GOOGLE_CREDENTIALS_B64` (a base64 service account
+key with the Datastore User role) to keep tickets permanently.
+
 ## Deploy (Cloud Run + Firestore)
 
 ```bash

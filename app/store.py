@@ -21,6 +21,10 @@ class Store(Protocol):
     def session_exists(self, session_id: str) -> bool: ...
     def set_last_ticket(self, session_id: str, ticket_id: str) -> None: ...
     def get_last_ticket(self, session_id: str) -> str | None: ...
+    def set_pending_image(self, session_id: str, image_id: str | None) -> None: ...
+    def get_pending_image(self, session_id: str) -> str | None: ...
+    def add_resolved_ward(self, session_id: str, ward: str) -> None: ...
+    def get_resolved_wards(self, session_id: str) -> list[str]: ...
     def save_image(self, image: dict) -> None: ...
     def get_image(self, image_id: str) -> dict | None: ...
     def set_image_analysis(self, image_id: str, analysis: dict) -> None: ...
@@ -40,7 +44,8 @@ class SqliteStore:
             self._conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
-                    id TEXT PRIMARY KEY, last_ticket_id TEXT, created_at TEXT NOT NULL);
+                    id TEXT PRIMARY KEY, last_ticket_id TEXT, pending_image_id TEXT,
+                    resolved_wards TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS images (
                     id TEXT PRIMARY KEY, session_id TEXT NOT NULL, path TEXT NOT NULL,
                     lat REAL, lng REAL, analysis TEXT, created_at TEXT NOT NULL);
@@ -54,6 +59,11 @@ class SqliteStore:
                 CREATE INDEX IF NOT EXISTS idx_tickets_cat_time ON tickets(category, created_at);
                 """
             )
+            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(sessions)")}
+            if "pending_image_id" not in cols:
+                self._conn.execute("ALTER TABLE sessions ADD COLUMN pending_image_id TEXT")
+            if "resolved_wards" not in cols:
+                self._conn.execute("ALTER TABLE sessions ADD COLUMN resolved_wards TEXT NOT NULL DEFAULT '[]'")
 
     def _one(self, sql: str, args: tuple) -> dict | None:
         with self._lock:
@@ -77,6 +87,28 @@ class SqliteStore:
     def get_last_ticket(self, session_id):
         row = self._one("SELECT last_ticket_id FROM sessions WHERE id = ?", (session_id,))
         return row["last_ticket_id"] if row else None
+
+    def set_pending_image(self, session_id, image_id):
+        self._exec("UPDATE sessions SET pending_image_id = ? WHERE id = ?", (image_id, session_id))
+
+    def get_pending_image(self, session_id):
+        row = self._one("SELECT pending_image_id FROM sessions WHERE id = ?", (session_id,))
+        return row["pending_image_id"] if row else None
+
+    def add_resolved_ward(self, session_id, ward):
+        with self._lock, self._conn:
+            row = self._conn.execute("SELECT resolved_wards FROM sessions WHERE id = ?", (session_id,)).fetchone()
+            if not row:
+                return
+            wards = json.loads(row["resolved_wards"])
+            if ward not in wards:
+                wards.append(ward)
+                self._conn.execute("UPDATE sessions SET resolved_wards = ? WHERE id = ?",
+                                   (json.dumps(wards), session_id))
+
+    def get_resolved_wards(self, session_id):
+        row = self._one("SELECT resolved_wards FROM sessions WHERE id = ?", (session_id,))
+        return json.loads(row["resolved_wards"]) if row else []
 
     def save_image(self, image):
         self._exec(
@@ -141,11 +173,16 @@ class SqliteStore:
 
 
 class FirestoreStore:
-    def __init__(self, project: str | None = None):
+    def __init__(self, project: str | None = None, credentials_info: dict | None = None):
         from google.cloud import firestore
 
         self._fs = firestore
-        self._db = firestore.Client(project=project or None)
+        creds = None
+        if credentials_info:
+            from google.oauth2 import service_account
+            creds = service_account.Credentials.from_service_account_info(credentials_info)
+            project = project or credentials_info.get("project_id")
+        self._db = firestore.Client(project=project or None, credentials=creds)
 
     def _doc(self, collection: str, doc_id: str):
         return self._db.collection(collection).document(doc_id)
@@ -155,7 +192,8 @@ class FirestoreStore:
         return snap.to_dict() if snap.exists else None
 
     def create_session(self, session_id):
-        self._doc("sessions", session_id).set({"id": session_id, "created_at": now().isoformat()})
+        self._doc("sessions", session_id).set(
+            {"id": session_id, "resolved_wards": [], "created_at": now().isoformat()})
 
     def session_exists(self, session_id):
         return self._doc("sessions", session_id).get().exists
@@ -166,6 +204,20 @@ class FirestoreStore:
     def get_last_ticket(self, session_id):
         data = self._get("sessions", session_id)
         return data.get("last_ticket_id") if data else None
+
+    def set_pending_image(self, session_id, image_id):
+        self._doc("sessions", session_id).update({"pending_image_id": image_id})
+
+    def get_pending_image(self, session_id):
+        data = self._get("sessions", session_id)
+        return data.get("pending_image_id") if data else None
+
+    def add_resolved_ward(self, session_id, ward):
+        self._doc("sessions", session_id).update({"resolved_wards": self._fs.ArrayUnion([ward])})
+
+    def get_resolved_wards(self, session_id):
+        data = self._get("sessions", session_id)
+        return list(data.get("resolved_wards", [])) if data else []
 
     def save_image(self, image):
         self._doc("images", image["id"]).set({**image, "analysis": None, "created_at": now().isoformat()})
@@ -203,7 +255,7 @@ class FirestoreStore:
 
 def make_store(settings) -> Store:
     if settings.store == "firestore":
-        return FirestoreStore(settings.gcp_project)
+        return FirestoreStore(settings.gcp_project, settings.credentials_info())
     return SqliteStore(settings.db_path)
 
 

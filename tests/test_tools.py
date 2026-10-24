@@ -211,3 +211,27 @@ def test_data_files_are_consistent():
     assert len(names) == len(set(names))
     aliases = [a for w in wards for a in w["aliases"]]
     assert len(aliases) == len(set(aliases)), "an alias points to two wards"
+
+
+def test_ward_lookup_survives_a_fresh_instance(services, store, tmp_path):
+    # on serverless hosts the follow-up message can land on another instance
+    # with empty agent memory; the ward check must still pass via the store
+    store.create_session("s1")
+    image_id = upload(store, tmp_path, "s1")
+    first = Ctx("s1")
+    tools.analyze_photo(image_id, first)
+    tools.find_ward_by_area("CG Road", first)
+    fresh = Ctx("s1")
+    res = tools.file_complaint(image_id, "Navrangpura", "CG Road", "", fresh)
+    assert res["ticket_id"]
+    assert store.get_pending_image("s1") is None
+    assert tools.get_complaint_status("", Ctx("s1"))["id"] == res["ticket_id"]
+
+
+def test_resolved_wards_are_per_session(services, store, tmp_path):
+    store.create_session("a")
+    store.create_session("b")
+    tools.find_ward_by_area("CG Road", Ctx("a"))
+    image_id = upload(store, tmp_path, "b")
+    tools.analyze_photo(image_id, Ctx("b"))
+    assert "error" in tools.file_complaint(image_id, "Navrangpura", "", "", Ctx("b"))

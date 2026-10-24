@@ -1,3 +1,5 @@
+import base64
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,9 +23,12 @@ class Settings:
     vision_model: str = os.getenv("VISION_MODEL", "gemini-3.1-flash-lite")
     maps_api_key: str = os.getenv("MAPS_API_KEY", "")
     store: str = os.getenv("STORE", "sqlite")
-    db_path: str = os.getenv("DB_PATH", "civic.db")
+    db_path: str = os.getenv("DB_PATH", "/tmp/civic.db" if os.getenv("VERCEL") else "civic.db")
     gcp_project: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
-    upload_dir: Path = Path(os.getenv("UPLOAD_DIR", "uploads"))
+    # serverless hosts (Vercel) only allow writing to /tmp
+    upload_dir: Path = Path(os.getenv("UPLOAD_DIR", "/tmp/uploads" if os.getenv("VERCEL") else "uploads"))
+    # service account JSON, base64 encoded, for Firestore outside Google Cloud
+    credentials_b64: str = os.getenv("GOOGLE_CREDENTIALS_B64", "")
     admin_token: str = os.getenv("ADMIN_TOKEN", "")
     # behind Cloud Run the real client IP is the last X-Forwarded-For entry
     trust_proxy: bool = os.getenv("TRUST_PROXY", "") == "1"
@@ -45,6 +50,11 @@ class Settings:
     chats_per_hour: int = 30
     sessions_per_hour_per_ip: int = 30
     lookups_per_hour_per_ip: int = 120
+
+    def credentials_info(self) -> dict | None:
+        if not self.credentials_b64:
+            return None
+        return json.loads(base64.b64decode(self.credentials_b64))
 
 
 settings = Settings()

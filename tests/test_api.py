@@ -90,3 +90,18 @@ def test_png_and_webp_accepted(client, session_id):
     for fmt in ("PNG", "WEBP"):
         r = report(client, session_id, make_photo(fmt=fmt), area="Paldi", filename=f"x.{fmt.lower()}")
         assert r.status_code == 200, fmt
+
+
+def test_follow_up_chat_reminds_agent_of_pending_photo(app_env, session_id):
+    client, store, vision, agent = app_env
+    report(client, session_id, make_photo())  # no location, nothing filed
+    pending = store.get_pending_image(session_id)
+    assert pending
+    client.post("/api/chat", json={"session_id": session_id, "message": "It's near CG Road"})
+    assert f"image_id: {pending}" in agent.messages[-1]
+
+
+def test_no_pending_photo_after_filing(app_env, session_id):
+    client, store, *_ = app_env
+    report(client, session_id, make_photo(gps=LAW_GARDEN))
+    assert store.get_pending_image(session_id) is None

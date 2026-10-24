@@ -169,6 +169,7 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
         if image["lat"] is None and lat is not None and lng is not None:
             image["lat"], image["lng"] = round(lat, 6), round(lng, 6)
         store.save_image({**image, "session_id": session_id})
+        store.set_pending_image(session_id, image["id"])
 
         area = " ".join(area_text.split())
         has_gps = "yes" if image["lat"] is not None else "no"
@@ -181,7 +182,13 @@ def create_app(store=None, vision=None, agent=None) -> FastAPI:
     async def chat(body: ChatIn):
         require_session(body.session_id)
         limit(f"chat:{body.session_id}", settings.chats_per_hour)
-        return await run_agent(body.session_id, body.message.strip())
+        message = body.message.strip()
+        # a follow-up ("it's near CG Road") may reach an instance that never saw
+        # the photo, so remind the agent which photo is still waiting to be filed
+        pending = store.get_pending_image(body.session_id)
+        if pending:
+            message = f"(My photo waiting to be filed has image_id: {pending}.)\n{message}"
+        return await run_agent(body.session_id, message)
 
     @app.get("/api/tickets/{ticket_id}")
     def get_ticket(ticket_id: str, request: Request):

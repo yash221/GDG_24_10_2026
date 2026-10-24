@@ -66,10 +66,18 @@ def _own_image(image_id: str, tool_context: ToolContext) -> dict | None:
 
 
 def _remember_ward(tool_context: ToolContext, ward: str) -> None:
+    # kept in the store too, so a follow-up message served by another
+    # instance can still file the complaint
     found = list(tool_context.state.get("resolved_wards", []))
     if ward not in found:
         found.append(ward)
     tool_context.state["resolved_wards"] = found
+    svc().store.add_resolved_ward(tool_context.user_id, ward)
+
+
+def _resolved_wards(tool_context: ToolContext) -> set[str]:
+    return set(tool_context.state.get("resolved_wards", [])) | set(
+        svc().store.get_resolved_wards(tool_context.user_id))
 
 
 def analyze_photo(image_id: str, tool_context: ToolContext) -> dict:
@@ -189,7 +197,7 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
         return {"error": "This doesn't look like a civic issue. Ask the user what the problem is."}
 
     ward_info = geo.WARD_BY_NAME.get(str(ward).lower())
-    if not ward_info or ward_info["ward"] not in tool_context.state.get("resolved_wards", []):
+    if not ward_info or ward_info["ward"] not in _resolved_wards(tool_context):
         return {"error": "Look up the ward first with find_ward_by_coordinates or find_ward_by_area"}
 
     area_name = str(area_name or "")[:100]
@@ -207,6 +215,7 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
         if near or same_spot:
             store.add_report(t["id"])
             store.set_last_ticket(tool_context.user_id, t["id"])
+            store.set_pending_image(tool_context.user_id, None)
             tool_context.state["last_ticket_id"] = t["id"]
             return {
                 "duplicate": True,
@@ -238,6 +247,7 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
     }
     store.create_ticket(ticket)
     store.set_last_ticket(tool_context.user_id, ticket["id"])
+    store.set_pending_image(tool_context.user_id, None)
     tool_context.state["last_ticket_id"] = ticket["id"]
     return {
         "duplicate": False,
