@@ -235,3 +235,17 @@ def test_resolved_wards_are_per_session(services, store, tmp_path):
     image_id = upload(store, tmp_path, "b")
     tools.analyze_photo(image_id, Ctx("b"))
     assert "error" in tools.file_complaint(image_id, "Navrangpura", "", "", Ctx("b"))
+
+
+def test_vision_failure_files_nothing_and_says_so(services, store, vision, tmp_path):
+    def broken(_bytes):
+        raise RuntimeError("429 quota exceeded")
+    vision.analyze = broken
+    ctx = Ctx("s-fail")
+    image_id = upload(store, tmp_path, "s-fail")
+    res = tools.analyze_photo(image_id=image_id, tool_context=ctx)
+    assert "Nothing was filed" in res["error"]
+    filed = tools.file_complaint(image_id=image_id, ward="Navrangpura", area_name="",
+                                 confirmed_category="pothole", tool_context=ctx)
+    assert "nothing was filed" in filed["error"]
+    assert "ticket_id" not in filed

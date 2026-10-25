@@ -102,7 +102,7 @@ def analyze_photo(image_id: str, tool_context: ToolContext) -> dict:
         analysis = svc().vision.analyze(Path(image["path"]).read_bytes())
     except Exception:
         log.exception("image analysis failed")
-        return {"error": "Could not analyse the photo right now"}
+        return {"error": "Could not analyse the photo right now. Nothing was filed. Ask the user to try again in a minute."}
     svc().store.set_image_analysis(image["id"], analysis)
     return analysis
 
@@ -190,7 +190,7 @@ def file_complaint(image_id: str, ward: str, area_name: str, confirmed_category:
         return {"error": "Unknown photo"}
     analysis = image.get("analysis")
     if not analysis:
-        return {"error": "Analyse the photo first"}
+        return {"error": "The photo has not been analysed, so nothing was filed. Ask the user to try again in a minute."}
 
     category = analysis["category"]
     uncertain = category in ("not_civic", "other_civic") or analysis["confidence"] < settings.min_confidence
