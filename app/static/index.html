@@ -5,110 +5,166 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Civic Complaint Agent</title>
   <meta name="description" content="Report a pothole, garbage, broken streetlight or waterlogging in Ahmedabad with one photo.">
+  <meta name="theme-color" content="#0b2e6b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b2e6b'/%3E%3Cpath d='M16 6c-4 0-7 3-7 7 0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7zm0 10a3 3 0 110-6 3 3 0 010 6z' fill='%23ff9933'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <a class="skip" href="#chat-title">Skip to chat</a>
+  <a class="skip" href="#report-title">Skip to the report form</a>
 
-  <header class="top">
-    <h1>Civic Complaint Agent</h1>
-    <p>Snap a pothole, garbage, a broken streetlight or waterlogging. We find the ward and department and file it with AMC.</p>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="currentColor"/>
+          <path d="M16 6c-4 0-7 3-7 7 0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7zm0 10a3 3 0 110-6 3 3 0 010 6z" fill="#ff9933"/>
+        </svg>
+        <span>Nagrik Seva <small>Ahmedabad</small></span>
+      </div>
+      <h1>One photo. The right AMC desk. A tracking ID.</h1>
+      <p class="tagline">Snap a civic problem. Our AI agent works out what it is, which ward it's in and which department fixes it, then files the complaint for you.</p>
+      <ul class="issue-types" aria-label="Issues you can report">
+        <li><span aria-hidden="true">🕳️</span> Potholes</li>
+        <li><span aria-hidden="true">🗑️</span> Garbage</li>
+        <li><span aria-hidden="true">💡</span> Streetlights</li>
+        <li><span aria-hidden="true">🌊</span> Waterlogging</li>
+      </ul>
+      <ol class="how" aria-label="How it works">
+        <li><span class="how-num" aria-hidden="true">1</span><span><strong>Snap</strong> the problem</span></li>
+        <li><span class="how-num" aria-hidden="true">2</span><span><strong>Agent</strong> finds ward and department</span></li>
+        <li><span class="how-num" aria-hidden="true">3</span><span><strong>Track</strong> with your ID</span></li>
+      </ol>
+    </div>
   </header>
 
-  <main>
-    <form id="report-form" class="card" autocomplete="off" aria-labelledby="report-title">
-      <h2 id="report-title" class="section-title">Report an issue</h2>
+  <main class="layout">
+    <div class="col">
+      <form id="report-form" class="card" autocomplete="off" aria-labelledby="report-title">
+        <h2 id="report-title" class="section-title" tabindex="-1"><span class="step-tag" aria-hidden="true">1</span> Report an issue</h2>
 
-      <input id="photo" class="visually-hidden" name="photo" type="file" tabindex="-1"
-             accept="image/jpeg,image/png,image/webp" aria-hidden="true">
-      <input id="camera-input" class="visually-hidden" type="file" tabindex="-1"
-             accept="image/*" capture="environment" aria-hidden="true">
-      <div class="photo-drop" id="photo-box">
-        <img id="preview" alt="Selected photo" hidden>
-        <span id="photo-hint">Add a photo of the problem</span>
-      </div>
-      <div class="photo-actions">
-        <button type="button" id="take-photo"><span aria-hidden="true">📷</span> Take photo</button>
-        <button type="button" id="pick-photo" class="ghost"><span aria-hidden="true">🖼️</span> Upload photo</button>
-      </div>
-
-      <div id="camera" class="camera" hidden role="dialog" aria-modal="true" aria-label="Camera">
-        <video id="camera-view" autoplay playsinline muted aria-label="Camera preview"></video>
-        <div class="photo-actions">
-          <button type="button" id="snap">Capture</button>
-          <button type="button" id="camera-close" class="ghost">Cancel</button>
+        <input id="photo" class="visually-hidden" name="photo" type="file" tabindex="-1"
+               accept="image/jpeg,image/png,image/webp" aria-hidden="true">
+        <input id="camera-input" class="visually-hidden" type="file" tabindex="-1"
+               accept="image/*" capture="environment" aria-hidden="true">
+        <div class="photo-drop" id="photo-box">
+          <img id="preview" alt="Selected photo" hidden>
+          <div id="photo-hint" class="photo-hint">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3a1 1 0 011 1v11a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1zm8 3a4 4 0 100 8 4 4 0 000-8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            <strong>Add a photo of the problem</strong>
+            <span>Take one now, or drop a photo here</span>
+          </div>
+          <span id="live-badge" class="live-badge" hidden>● Live photo</span>
         </div>
-      </div>
-      <label for="note" class="field-label">What's the problem? <span class="optional">(optional)</span></label>
-      <textarea id="note" name="description" maxlength="300" rows="2"
-                placeholder="e.g. Deep pothole near the bus stop, bikes keep slipping" aria-describedby="note-help"></textarea>
-      <p id="note-help" class="hint">Helps the agent when the photo isn't clear. Don't include phone numbers or personal details.</p>
+        <div class="photo-actions">
+          <button type="button" id="take-photo"><span aria-hidden="true">📷</span> Take photo</button>
+          <button type="button" id="pick-photo" class="ghost"><span aria-hidden="true">🖼️</span> Upload photo</button>
+        </div>
+        <p id="photo-help" class="hint">Live photos get a higher trust score. JPEG, PNG or WEBP, resized automatically.</p>
 
-      <p id="photo-help" class="hint">JPEG, PNG or WEBP. Large photos are resized automatically.</p>
+        <div id="camera" class="camera" hidden role="dialog" aria-modal="true" aria-label="Camera">
+          <video id="camera-view" autoplay playsinline muted aria-label="Camera preview"></video>
+          <div class="photo-actions">
+            <button type="button" id="snap"><span aria-hidden="true">⦿</span> Capture</button>
+            <button type="button" id="camera-close" class="ghost">Cancel</button>
+          </div>
+        </div>
 
-      <label for="area" class="field-label">Area or landmark <span class="optional">(optional if the photo has location)</span></label>
-      <div class="row">
-        <input id="area" name="area_text" type="text" maxlength="100" placeholder="e.g. CG Road, near Law Garden">
-        <button type="button" id="locate" class="ghost" aria-label="Use my current location" title="Use my current location">
-          <span aria-hidden="true">📍</span>
+        <label for="note" class="field-label">What's the problem? <span class="optional">(optional)</span></label>
+        <textarea id="note" name="description" maxlength="300" rows="2"
+                  placeholder="e.g. Deep pothole near the bus stop, bikes keep slipping" aria-describedby="note-help"></textarea>
+        <p id="note-help" class="hint">Helps the agent when the photo isn't clear. Don't include phone numbers or personal details.</p>
+
+        <label for="area" class="field-label">Area or landmark <span class="optional">(optional if the photo has location)</span></label>
+        <div class="row">
+          <input id="area" name="area_text" type="text" maxlength="100" placeholder="e.g. CG Road, near Law Garden">
+          <button type="button" id="locate" class="ghost icon-btn" aria-label="Use my current location" title="Use my current location">
+            <span aria-hidden="true">📍</span>
+          </button>
+        </div>
+        <p id="loc-status" class="hint" role="status">Location from the photo is used if available.</p>
+
+        <button id="submit" class="primary" type="submit" disabled>
+          <span>Report to AMC</span><span aria-hidden="true">→</span>
         </button>
-      </div>
-      <p id="loc-status" class="hint" role="status">Location from the photo is used if available.</p>
-
-      <button id="submit" type="submit" disabled>Report issue</button>
-    </form>
-
-    <section id="ticket" class="card ticket" aria-labelledby="ticket-title" hidden>
-      <div class="ticket-head">
-        <h2 id="ticket-title" class="label">Tracking ID</h2>
-        <button type="button" id="copy-id" class="ghost small" aria-label="Copy tracking ID">Copy</button>
-      </div>
-      <p id="t-id" class="ticket-id"></p>
-      <dl>
-        <dt>Issue</dt><dd id="t-issue"></dd>
-        <dt>Ward</dt><dd id="t-ward"></dd>
-        <dt>Department</dt><dd id="t-dept"></dd>
-        <dt>Status</dt><dd><span id="t-status" class="pill"></span></dd>
-        <dt>Expected by</dt><dd id="t-expected"></dd>
-        <dt id="t-note-label" hidden>Your note</dt><dd id="t-note" hidden></dd>
-        <dt>Photo trust</dt><dd><span id="t-trust" class="pill"></span></dd>
-      </dl>
-      <details id="trust-details" class="steps">
-        <summary>Why this trust score?</summary>
-        <ul id="trust-reasons"></ul>
-      </details>
-      <div class="share">
-        <a id="share-x" class="button ghost" target="_blank" rel="noopener noreferrer">Post on X<span class="visually-hidden"> (opens in a new tab)</span></a>
-        <button type="button" id="copy-post" class="ghost">Copy post for Instagram</button>
-      </div>
-    </section>
-
-    <section class="card rewards" aria-labelledby="rewards-title">
-      <h2 id="rewards-title" class="section-title">Your civic points</h2>
-      <p class="points"><span id="r-total">0</span> points</p>
-      <p id="r-last" class="hint" role="status">Report a real issue to earn points. You get more when AMC fixes it.</p>
-      <ul id="r-badges" class="badges" aria-label="Your badges"></ul>
-      <h3 class="subtitle">Top reporters</h3>
-      <ol id="leaders" class="leaders"></ol>
-    </section>
-
-    <section class="card chat" aria-labelledby="chat-title">
-      <h2 id="chat-title" class="section-title" tabindex="-1">Ask the agent</h2>
-      <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation with the agent"></div>
-      <div class="chips">
-        <button type="button" class="chip" data-msg="What's the status?">What's the status?</button>
-        <button type="button" class="chip" data-msg="Draft a social media post for my complaint">Draft a post</button>
-        <button type="button" class="chip" data-msg="How many points do I have?">My points</button>
-      </div>
-      <form id="chat-form" class="row">
-        <label for="message" class="visually-hidden">Message</label>
-        <input id="message" type="text" maxlength="500" placeholder="Ask about your complaint">
-        <button type="submit">Send</button>
       </form>
-    </section>
 
-    <p class="footnote">Demo: the AMC system here is a mock, no real complaint is filed.</p>
+      <section class="card rewards" aria-labelledby="rewards-title">
+        <div class="rewards-head">
+          <div>
+            <h2 id="rewards-title" class="section-title">Your civic points</h2>
+            <p class="points"><span id="r-total">0</span> <small>pts</small></p>
+          </div>
+          <span id="r-pop" class="pop" aria-hidden="true"></span>
+        </div>
+        <p id="r-last" class="hint" role="status">Report a real issue to earn points. You get more when AMC fixes it.</p>
+        <ul id="r-badges" class="badges" aria-label="Your badges"></ul>
+        <h3 class="subtitle">Top reporters this month</h3>
+        <ol id="leaders" class="leaders"></ol>
+      </section>
+    </div>
+
+    <div class="col">
+      <section id="agent" class="card agent" aria-labelledby="agent-title" hidden>
+        <h2 id="agent-title" class="section-title"><span class="step-tag" aria-hidden="true">2</span> Agent at work</h2>
+        <ol id="agent-steps" class="timeline" aria-live="polite"></ol>
+      </section>
+
+      <section id="ticket" class="ticket" aria-labelledby="ticket-title" hidden>
+        <div class="ticket-top">
+          <div>
+            <h2 id="ticket-title" class="label">AMC tracking ID</h2>
+            <p id="t-id" class="ticket-id"></p>
+          </div>
+          <button type="button" id="copy-id" class="ghost small on-dark" aria-label="Copy tracking ID">Copy</button>
+        </div>
+        <ol id="t-track" class="track" aria-label="Complaint progress"></ol>
+        <div class="ticket-body">
+          <dl>
+            <dt>Issue</dt><dd id="t-issue"></dd>
+            <dt>Ward</dt><dd id="t-ward"></dd>
+            <dt>Department</dt><dd id="t-dept"></dd>
+            <dt>Status</dt><dd><span id="t-status" class="pill"></span></dd>
+            <dt>Expected by</dt><dd id="t-expected"></dd>
+            <dt id="t-note-label" hidden>Your note</dt><dd id="t-note" hidden></dd>
+          </dl>
+          <div class="trust">
+            <div id="t-ring" class="ring" aria-hidden="true"><span id="t-ring-num">0</span></div>
+            <div>
+              <p class="label">Photo trust</p>
+              <span id="t-trust" class="pill"></span>
+            </div>
+          </div>
+          <details id="trust-details" class="steps">
+            <summary>Why this trust score?</summary>
+            <ul id="trust-reasons" class="reasons"></ul>
+          </details>
+          <div class="share">
+            <a id="share-x" class="button ghost" target="_blank" rel="noopener noreferrer">Post on X<span class="visually-hidden"> (opens in a new tab)</span></a>
+            <button type="button" id="copy-post" class="ghost">Copy post for Instagram</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card chat" aria-labelledby="chat-title">
+        <h2 id="chat-title" class="section-title" tabindex="-1"><span class="step-tag" aria-hidden="true">3</span> Ask the agent</h2>
+        <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation with the agent"></div>
+        <div class="chips">
+          <button type="button" class="chip" data-msg="What's the status?">What's the status?</button>
+          <button type="button" class="chip" data-msg="Draft a social media post for my complaint">Draft a post</button>
+          <button type="button" class="chip" data-msg="How many points do I have?">My points</button>
+        </div>
+        <form id="chat-form" class="row">
+          <label for="message" class="visually-hidden">Message</label>
+          <input id="message" type="text" maxlength="500" placeholder="Ask about your complaint, in English, Hindi or Gujarati">
+          <button type="submit">Send</button>
+        </form>
+      </section>
+    </div>
   </main>
+
+  <footer class="footnote">
+    <p>Demo build: the AMC system here is a mock, so no real complaint is filed. Built with Google Gemini and ADK.</p>
+  </footer>
 
   <script src="app.js"></script>
 </body>

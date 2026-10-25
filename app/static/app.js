@@ -24,6 +24,7 @@ let busy = false;
 let selectedFile = null;
 let capturedLive = false;
 let stream = null;
+let sessionStarted = false; // no "+points" pop for the total loaded on page open
 
 function storageGet(key) {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -89,19 +90,53 @@ function showTrust(t) {
   const trusted = t.trust_level === "trusted";
   $("t-trust").textContent = `${t.trust_score}/100 · ${trusted ? "Trusted" : "Needs verification"}`;
   $("t-trust").classList.toggle("warn", !trusted);
+  $("t-trust").classList.toggle("good", trusted);
+  $("t-ring").classList.toggle("warn", !trusted);
+  $("t-ring").style.setProperty("--pct", t.trust_score);
+  $("t-ring-num").textContent = t.trust_score;
   const list = $("trust-reasons");
   list.replaceChildren();
   for (const r of t.trust_reasons || []) {
     const li = document.createElement("li");
-    li.textContent = `${r.text} (${r.points > 0 ? "+" : ""}${r.points})`;
+    const text = document.createElement("span");
+    text.textContent = r.text;
+    const pts = document.createElement("span");
+    pts.className = r.points > 0 ? "plus" : "minus";
+    pts.textContent = `${r.points > 0 ? "+" : ""}${r.points}`;
+    li.append(text, pts);
     list.appendChild(li);
   }
   $("trust-details").hidden = !(t.trust_reasons || []).length;
 }
 
+const STATUSES = ["Filed", "Assigned", "In Progress", "Resolved"];
+
+function showStatus(status) {
+  $("t-status").textContent = status;
+  $("t-status").classList.toggle("good", status === "Resolved");
+  const reached = STATUSES.indexOf(status);
+  const track = $("t-track");
+  track.replaceChildren();
+  STATUSES.forEach((name, i) => {
+    const li = document.createElement("li");
+    li.textContent = name;
+    if (i <= reached) li.className = "reached";
+    if (i === reached) li.setAttribute("aria-current", "step");
+    track.appendChild(li);
+  });
+}
+
 function showRewards(r) {
   if (!r) return;
+  const before = Number($("r-total").textContent) || 0;
   $("r-total").textContent = r.total;
+  if (r.total > before && sessionStarted) {
+    const pop = $("r-pop");
+    pop.textContent = `+${r.total - before}`;
+    pop.classList.remove("show");
+    void pop.offsetWidth; // restart the animation
+    pop.classList.add("show");
+  }
   const badges = $("r-badges");
   badges.replaceChildren();
   for (const name of r.badges) {
@@ -125,7 +160,12 @@ async function loadLeaders() {
     }
     for (const l of leaders) {
       const li = document.createElement("li");
-      li.textContent = `${l.name}: ${l.points} pts`;
+      const name = document.createElement("span");
+      name.textContent = l.name;
+      const pts = document.createElement("span");
+      pts.className = "pts";
+      pts.textContent = `${l.points} pts`;
+      li.append(name, pts);
       list.appendChild(li);
     }
   } catch { /* leaderboard is optional */ }
@@ -145,7 +185,7 @@ function showTicket(t) {
   $("t-issue").textContent = `${ISSUE_LABELS[t.category] || t.category} (${t.severity})`;
   $("t-ward").textContent = `${t.ward}, ${t.zone} zone`;
   $("t-dept").textContent = t.department;
-  $("t-status").textContent = t.status;
+  showStatus(t.status);
   $("t-expected").textContent = t.expected_by;
   showTrust(t);
   $("t-note").textContent = t.user_note || "";
@@ -162,23 +202,54 @@ function setBusy(on) {
   for (const b of document.querySelectorAll("#chat-form button, .chip")) b.disabled = on;
 }
 
-// labels can be a list: the message moves through them so a slow reply
-// from the free Gemini tier doesn't look like the page froze
-async function run(labels, request) {
+// The agent answers in one go, so while it works the timeline moves through the
+// expected stages; when the reply lands it is redrawn from the real tool calls.
+const Timeline = {
+  ticker: null,
+  start(labels) {
+    const list = $("agent-steps");
+    list.replaceChildren(...labels.map((text) => {
+      const li = document.createElement("li");
+      li.textContent = text;
+      return li;
+    }));
+    $("agent").hidden = false;
+    let step = 0;
+    list.children[0].className = "active";
+    this.ticker = setInterval(() => {
+      if (step >= list.children.length - 1) return;
+      list.children[step].className = "done";
+      list.children[++step].className = "active";
+    }, 5000);
+  },
+  finish(steps) {
+    clearInterval(this.ticker);
+    const tools = (steps || []).filter((s) => STEP_LABELS[s.tool]);
+    if (!tools.length) return;
+    $("agent-steps").replaceChildren(...tools.map((s) => {
+      const li = document.createElement("li");
+      li.className = s.result && s.result.error ? "failed" : "done";
+      li.textContent = STEP_LABELS[s.tool];
+      return li;
+    }));
+  },
+  fail() {
+    clearInterval(this.ticker);
+    const active = $("agent-steps").querySelector(".active");
+    if (active) active.className = "failed";
+  },
+};
+
+async function run(label, request, stages) {
   if (busy) return;
   setBusy(true);
-  labels = Array.isArray(labels) ? labels : [labels];
-  const thinking = addMessage(labels[0], "thinking");
-  let step = 0;
-  const ticker = setInterval(() => {
-    step = Math.min(step + 1, labels.length - 1);
-    thinking.textContent = labels[step];
-  }, 6000);
+  const thinking = stages ? null : addMessage(label, "thinking");
+  if (stages) Timeline.start(stages);
   try {
     const res = await request();
-    clearInterval(ticker);
-    thinking.remove();
-    addSteps(res.steps);
+    if (thinking) thinking.remove();
+    if (stages) Timeline.finish(res.steps);
+    else addSteps(res.steps);
     addMessage(res.reply || "Done.", "agent");
     showTicket(res.ticket);
     showRewards(res.rewards);
@@ -186,11 +257,11 @@ async function run(labels, request) {
     loadLeaders();
     const status = res.steps && res.steps.find((s) => s.tool === "get_complaint_status");
     if (status && status.result && status.result.status && status.result.id === $("t-id").textContent) {
-      $("t-status").textContent = status.result.status;
+      showStatus(status.result.status);
     }
   } catch (err) {
-    clearInterval(ticker);
-    thinking.remove();
+    if (thinking) thinking.remove();
+    if (stages) Timeline.fail();
     addMessage(err.message, "error");
   } finally {
     setBusy(false);
@@ -204,8 +275,22 @@ function usePhoto(file, live) {
   $("preview").alt = live ? "Photo taken with the camera" : `Selected photo: ${file.name}`;
   $("preview").hidden = false;
   $("photo-hint").hidden = true;
+  $("live-badge").hidden = !live;
   $("submit").disabled = busy;
 }
+
+const box = $("photo-box");
+box.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  box.classList.add("dragging");
+});
+box.addEventListener("dragleave", () => box.classList.remove("dragging"));
+box.addEventListener("drop", (e) => {
+  e.preventDefault();
+  box.classList.remove("dragging");
+  const file = e.dataTransfer.files[0];
+  if (file && /^image\//.test(file.type)) usePhoto(file, false);
+});
 
 $("pick-photo").addEventListener("click", () => $("photo").click());
 $("photo").addEventListener("change", () => {
@@ -331,14 +416,8 @@ $("report-form").addEventListener("submit", async (e) => {
   }
   const area = $("area").value.trim();
   const note = $("note").value.trim();
-  addMessage(area ? `Reporting an issue near ${area}` : "Reporting an issue", "user");
-  run([
-    "Looking at the photo...",
-    "Checking where this is and finding the AMC ward...",
-    "Picking the right department...",
-    "Checking the photo is genuine and filing the complaint...",
-    "Still working. The AI is busy right now, this can take up to a minute...",
-  ], () =>
+  addMessage(area ? `Reporting an issue at: ${area}` : "Reporting an issue", "user");
+  run("", () =>
     api("/api/report", (sid) => {
       const fd = new FormData();
       fd.append("session_id", sid);
@@ -352,7 +431,14 @@ $("report-form").addEventListener("submit", async (e) => {
       }
       return { method: "POST", body: fd };
     }),
-  );
+  [
+    "Looking at the photo",
+    "Checking where it was taken",
+    "Finding the AMC ward",
+    "Picking the department",
+    "Checking the photo is genuine",
+    "Filing the complaint (the free AI tier can take up to a minute)",
+  ]);
 });
 
 function sendChat(text) {
@@ -399,5 +485,8 @@ if (sessionId) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId }),
-  }).then((r) => (r.ok ? r.json() : null)).then(showRewards).catch(() => {});
+  }).then((r) => (r.ok ? r.json() : null)).then(showRewards).catch(() => {})
+    .finally(() => { sessionStarted = true; });
+} else {
+  sessionStarted = true;
 }
